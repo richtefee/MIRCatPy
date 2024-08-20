@@ -1,12 +1,3 @@
-# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-# MIRcatSDK.h
-#
-# Copyright (c) 2013-2014.   All rights reserved.
-# Daylight Solutions
-# 15378 Avenue of Science, Suite 200
-# San Diego, CA  92128
-# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
 from ctypes import *
 
 """ Section: Constants """

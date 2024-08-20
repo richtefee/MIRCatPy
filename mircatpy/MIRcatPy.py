@@ -1,7 +1,9 @@
+import os
+import sys
 import time
 from functools import wraps
 from ctypes import CDLL, c_uint16, c_uint8, c_float, c_bool, byref
-from MIRcatSDKConstants import *
+from mircatpy.MIRcatSDKConstants import *
 
 from colorama import Fore, Style, init
 
@@ -38,7 +40,9 @@ def check_return_value(ret, success_code=MIRcatSDK_RET_SUCCESS.value):
 
 
 class MIRcat:
-    def __init__(self, dll_path="./libs/x64/MIRcatSDK"):
+    def __init__(self):
+        dir = os.path.dirname(sys.modules["mircatpy"].__file__)
+        dll_path = os.path.join(dir, "libs/x64/MIRcatSDK.dll")
         self.SDK = CDLL(dll_path)
         self._initialize()
 
