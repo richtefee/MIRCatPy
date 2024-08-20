@@ -1,0 +1,11 @@
+```plaintext
+*.pyc
+pycache/
+*.dll
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+mircatpy/libs/x32/
+mircatpy/libs/x64/
