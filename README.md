@@ -4,7 +4,7 @@ MIRcatPy is a Python package designed to interface with the MIRcat SDK.
 
 ## Warning
 
-This package is provided "as-is" and may contain errors or bugs that could affect the stability of your system or cause unintended behavior. Users should proceed with caution and thoroughly test the package in a controlled environment before deploying it in production. The use of the MIRcat system involves handling high-power lasers, which can be hazardous. Ensure that all safety protocols are followed, and proper protective equipment is used to prevent injury. Always adhere to safety guidelines and parameter provided your vendor when working with laser systems. The developers and maintainers of MIRcatPy are not responsible for any damage or injury resulting from the use of this package.
+This package is provided "as-is" and may contain errors or bugs that could affect the stability of your system or cause unintended behavior. Users should proceed with caution and thoroughly test the package in a controlled environment before deploying it in production. The use of the MIRcat system involves handling high-power lasers, which can be hazardous. Ensure that all safety protocols are followed, and proper protective equipment is used to prevent injury. Always adhere to safety guidelines and parameter provided by your vendor when working with laser systems. The developers and maintainers of MIRcatPy are not responsible for any damage or injury resulting from the use of this package.
 
 ## Installation
 
