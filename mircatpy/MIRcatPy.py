@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 import time
 from functools import wraps
 from ctypes import CDLL, c_uint16, c_uint8, c_float, c_bool, byref
@@ -18,7 +19,7 @@ class MIRcatError(Exception):
 def requires_connection(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        if not self.status["connected"]:
+        if not self._status["connected"]:
             raise RuntimeError("Operation requires connection to MIRCat laser.")
         return func(self, *args, **kwargs)
 
@@ -37,12 +38,54 @@ def check_return_value(ret, success_code=MIRcatSDK_RET_SUCCESS.value):
         error_message = error_messages.get(ret, "Unknown error occurred")
         raise MIRcatError(ret, error_message)
     return True
+    
+def print_dict(data_dict):
+    def color_value(value):
+        if isinstance(value, bool):
+            colored_value = (
+                f"{Fore.GREEN}True{Style.RESET_ALL}"
+                if value
+                else f"{Fore.RED}False{Style.RESET_ALL}"
+            )
+        else:
+            colored_value = str(value)
 
+        if "?" in colored_value:
+            return f"{Fore.LIGHTBLACK_EX}{colored_value}{Style.RESET_ALL}"
+
+        return colored_value
+
+    for key, value in data_dict.items():
+        print(f"{key:<30} {color_value(value)}")
+
+def wait_till(function, target=True, delay=0.5, timeout=30):
+        start_time = time.time()
+
+        while True:
+            current_value = function()
+            if current_value == target:
+                return True
+
+            elapsed_time = time.time() - start_time
+            if elapsed_time > timeout:
+                raise TimeoutError(
+                    f"Timed out after {timeout} seconds while waiting for target value {target}."
+                )
+
+            time.sleep(delay)
 
 class MIRcat:
-    def __init__(self):
-        dir = os.path.dirname(sys.modules["mircatpy"].__file__)
-        dll_path = os.path.join(dir, "libs/x64/MIRcatSDK.dll")
+    def __init__(self,dll_path=None):
+        if dll_path is None:
+            dir = os.path.dirname(sys.modules["mircatpy"].__file__)
+            
+            # Check the architecture of the current Python interpreter
+            arch = platform.architecture()[0]
+            if arch == "64bit":
+                dll_path = os.path.join(dir, "libs/x64/MIRcatSDK.dll")
+            else:
+                dll_path = os.path.join(dir, "libs/x32/MIRcatSDK.dll")
+                
         self.SDK = CDLL(dll_path)
         self._initialize()
 
@@ -85,6 +128,7 @@ class MIRcat:
 
     def connect(self):
         ret = self.SDK.MIRcatSDK_Initialize()
+        time.sleep(5)
         self._status["connected"] = check_return_value(ret)
 
     @requires_connection
@@ -101,33 +145,14 @@ class MIRcat:
             self._status["isArmed"] = self.get_laser_armed_status()
             self._status["isEmitting"] = self.check_laser_emission()
             self._status["isTuned"] = self.is_tuned()
-            self._status["wl"], self.status["wn"] = self.get_ww()
+            self._status["wl"], self._status["wn"] = self.get_ww()
         return self._status
 
-    def _print_dict(self, data_dict):
-        def color_value(value):
-            if isinstance(value, bool):
-                colored_value = (
-                    f"{Fore.GREEN}True{Style.RESET_ALL}"
-                    if value
-                    else f"{Fore.RED}False{Style.RESET_ALL}"
-                )
-            else:
-                colored_value = str(value)
-
-            if "?" in colored_value:
-                return f"{Fore.LIGHTBLACK_EX}{colored_value}{Style.RESET_ALL}"
-
-            return colored_value
-
-        for key, value in data_dict.items():
-            print(f"{key:<30} {color_value(value)}")
-
     def display_status(self):
-        self._print_dict(self.status)
+        print_dict(self.status)
 
     def display_scanStatus(self):
-        self._print_dict(self.scanStatus)
+        print_dict(self.scanStatus)
 
     @requires_connection
     def get_num_qcls(self):
@@ -163,15 +188,15 @@ class MIRcat:
         ret = self.SDK.MIRcatSDK_TuneToWW(c_float(target), modes.get(mode), c_uint8(1))
         check_return_value(ret)
 
-        self.wait_till(self.is_tuned, True, 0.5, 30)
+        wait_till(self.is_tuned, True, 0.5, 30)
 
     @requires_connection
     def is_tuned(self):
         isTuned = c_bool(False)
         ret = self.SDK.MIRcatSDK_IsTuned(byref(isTuned))
         check_return_value(ret)
-        self.status["isTuned"] = isTuned.value
-        return self.status["isTuned"]
+        self._status["isTuned"] = isTuned.value
+        return self._status["isTuned"]
 
     @requires_connection
     def get_ww(self):
@@ -183,11 +208,11 @@ class MIRcat:
             byref(actualWW), byref(units), byref(lightValid)
         )
         check_return_value(ret)
-        self.status["wl"], self.status["wn"] = self._ww_interpreter(actualWW, units)
+        self._status["wl"], self._status["wn"] = self._ww_interpreter(actualWW, units)
 
-        return actualWW.value
+        return self._status["wl"], self._status["wn"]
 
-    def _ww_interpreter(val, unit):
+    def _ww_interpreter(self, val, unit):
         if unit.value == MIRcatSDK_UNITS_MICRONS.value:
             wl = val.value
             wn = wl and 1e4 / wl or 0
@@ -200,43 +225,37 @@ class MIRcat:
     def enable_emission(self):
         ret = self.SDK.MIRcatSDK_TurnEmissionOn()
         check_return_value(ret)
-
-        return self.check_laser_emission()
+        
+        return wait_till(self.check_laser_emission)
 
     @requires_connection
     def disable_emission(self):
         ret = self.SDK.MIRcatSDK_TurnEmissionOff()
         check_return_value(ret)
 
-        return not self.check_laser_emission()
+        return wait_till(self.check_laser_emission, False)
 
     @requires_connection
     def check_laser_emission(self):
         isEmitting = c_bool(False)
         ret = self.SDK.MIRcatSDK_IsEmissionOn(byref(isEmitting))
         check_return_value(ret)
-        self.status["isEmitting"] = isEmitting.value
-        return self.status["isEmitting"]
-
-    @requires_connection
-    def disable_laser(self):
-        ret = self.SDK.MIRcatSDK_TurnEmissionOff()
-        check_return_value(ret)
-        return self.get_laser_armed_status()
+        self._status["isEmitting"] = isEmitting.value
+        return self._status["isEmitting"]
 
     @requires_connection
     def disarm_laser(self):
         ret = self.SDK.MIRcatSDK_DisarmLaser()
         check_return_value(ret)
-        return not self.get_laser_armed_status()
+        return wait_till(self.get_laser_armed_status, False)
 
     @requires_connection
     def get_laser_armed_status(self):
         isArmed = c_bool(True)
         ret = self.SDK.MIRcatSDK_IsLaserArmed(byref(isArmed))
         check_return_value(ret)
-        self.status["isArmed"] = isArmed.value
-        return self.status["isArmed"]
+        self._status["isArmed"] = isArmed.value
+        return self._status["isArmed"]
 
     @requires_connection
     def get_QCL_params_all(self):
@@ -308,9 +327,11 @@ class MIRcat:
             c_uint8(QCLnum), c_float(puls_rate), c_float(puls_width), c_float(current)
         )
         check_return_value(ret)
+       
+        # TODO: Return check
 
     @requires_connection
-    def StartSweepScan(
+    def startSweepScan(
         self, mode, start, end, speed, repetitions=1, bidirectional=False
     ):
         modes = {"wl": MIRcatSDK_UNITS_MICRONS, "wn": MIRcatSDK_UNITS_CM1}
@@ -374,7 +395,6 @@ class MIRcat:
             "curScanRepetition": curScanRepetition.value,
             "curScanPercent": curScanPercent.value,
             "curWW": curWW.value,
-            "units": units.value,
             "isTECInProgress": isTECInProgress.value,
             "isMotionInProgress": isMotionInProgress.value,
             "wl": wl,  # Wavelength interpreted from curWW
@@ -386,22 +406,4 @@ class MIRcat:
     def __del__(self):
         self.disconnect()
 
-    def wait_till(self, function, target=True, delay=0.5, timeout=30):
-        start_time = time.time()
-
-        while True:
-            current_value = function()
-            if current_value == target:
-                return True
-
-            elapsed_time = time.time() - start_time
-            if elapsed_time > timeout:
-                raise TimeoutError(
-                    f"Timed out after {timeout} seconds while waiting for target value {target}."
-                )
-
-            time.sleep(delay)
-
-
-if __name__ == "__main__":
-    MC = MIRcat()
+    
