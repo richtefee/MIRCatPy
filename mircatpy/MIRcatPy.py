@@ -183,7 +183,17 @@ class MIRcat:
 
     @requires_connection
     def arm_laser(self):
-        ArmAndWaitForTemp(self.SDK, self.numQCLs)
+        ret = self.SDK.MIRcatSDK_ArmLaser()
+        check_return_value(ret)
+
+        return wait_till(self.get_laser_armed_status)
+
+    @requires_connection
+    def disarm_laser(self):
+        ret = self.SDK.MIRcatSDK_DisArmLaser()
+        check_return_value(ret)
+
+        return wait_till(self.get_laser_armed_status, False)
 
     @requires_connection
     def tune(self, mode, target):
