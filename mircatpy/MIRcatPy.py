@@ -38,7 +38,8 @@ def check_return_value(ret, success_code=MIRcatSDK_RET_SUCCESS.value):
         error_message = error_messages.get(ret, "Unknown error occurred")
         raise MIRcatError(ret, error_message)
     return True
-    
+
+
 def print_dict(data_dict):
     def color_value(value):
         if isinstance(value, bool):
@@ -58,34 +59,36 @@ def print_dict(data_dict):
     for key, value in data_dict.items():
         print(f"{key:<30} {color_value(value)}")
 
+
 def wait_till(function, target=True, delay=0.5, timeout=30):
-        start_time = time.time()
+    start_time = time.time()
 
-        while True:
-            current_value = function()
-            if current_value == target:
-                return True
+    while True:
+        current_value = function()
+        if current_value == target:
+            return True
 
-            elapsed_time = time.time() - start_time
-            if elapsed_time > timeout:
-                raise TimeoutError(
-                    f"Timed out after {timeout} seconds while waiting for target value {target}."
-                )
+        elapsed_time = time.time() - start_time
+        if elapsed_time > timeout:
+            raise TimeoutError(
+                f"Timed out after {timeout} seconds while waiting for target value {target}."
+            )
 
-            time.sleep(delay)
+        time.sleep(delay)
+
 
 class MIRcat:
-    def __init__(self,dll_path=None):
+    def __init__(self, dll_path=None):
         if dll_path is None:
             dir = os.path.dirname(sys.modules["mircatpy"].__file__)
-            
+
             # Check the architecture of the current Python interpreter
             arch = platform.architecture()[0]
             if arch == "64bit":
                 dll_path = os.path.join(dir, "libs/x64/MIRcatSDK.dll")
             else:
                 dll_path = os.path.join(dir, "libs/x32/MIRcatSDK.dll")
-                
+
         self.SDK = CDLL(dll_path)
         self._initialize()
 
@@ -225,7 +228,7 @@ class MIRcat:
     def enable_emission(self):
         ret = self.SDK.MIRcatSDK_TurnEmissionOn()
         check_return_value(ret)
-        
+
         return wait_till(self.check_laser_emission)
 
     @requires_connection
@@ -327,7 +330,7 @@ class MIRcat:
             c_uint8(QCLnum), c_float(puls_rate), c_float(puls_width), c_float(current)
         )
         check_return_value(ret)
-       
+
         # TODO: Return check
 
     @requires_connection
@@ -335,7 +338,7 @@ class MIRcat:
         self, mode, start, end, speed, repetitions=1, bidirectional=False
     ):
         modes = {"wl": MIRcatSDK_UNITS_MICRONS, "wn": MIRcatSDK_UNITS_CM1}
-        ret = self.SDK.MIRcatSDK_TuneToWW(
+        ret = self.SDK.MIRcatSDK_StartSweepScan(
             c_float(start),
             c_float(end),
             c_float(speed),
@@ -405,5 +408,3 @@ class MIRcat:
 
     def __del__(self):
         self.disconnect()
-
-    
