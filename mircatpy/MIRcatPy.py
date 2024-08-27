@@ -133,11 +133,13 @@ class MIRcat:
         ret = self.SDK.MIRcatSDK_Initialize()
         time.sleep(5)
         self._status["connected"] = check_return_value(ret)
+        return self._status["connected"]
 
     @requires_connection
     def disconnect(self):
         ret = self.SDK.MIRcatSDK_DeInitialize()
         self._status["connected"] = not (check_return_value(ret))
+        return self._status["connected"]
 
     @property
     def status(self):
