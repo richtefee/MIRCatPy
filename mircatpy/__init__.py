@@ -1,1 +1,1 @@
-from .MIRcatPy import MIRcat
+from .MIRcatPy import MIRcat, MIRcatError
