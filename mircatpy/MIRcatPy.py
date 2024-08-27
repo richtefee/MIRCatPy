@@ -5,6 +5,7 @@ import time
 from functools import wraps
 from ctypes import CDLL, c_uint16, c_uint8, c_float, c_bool, byref
 from mircatpy.MIRcatSDKConstants import *
+import threading
 
 from colorama import Fore, Style, init
 
@@ -19,7 +20,7 @@ class MIRcatError(Exception):
 def requires_connection(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        if self.is_connected():
+        if not self.is_connected():
             raise MIRcatError(
                 code="-3", message="Operation requires connection to MIRCat laser."
             )
@@ -42,9 +43,51 @@ def check_return_value(ret, success_code=MIRcatSDK_RET_SUCCESS.value):
     return True
 
 
-def call_wrapper(sdk_function, *args):
-    ret = sdk_function(*args)
-    return check_return_value(ret)
+def call_with_timeout(sdk_function, timeout=5, *args):
+    """
+    Calls an SDK function with a timeout and checks the result.
+
+    :param sdk_function: The SDK function to call (e.g., self.SDK.MIRcatSDK_GetNumInstalledQcls).
+    :param timeout: The maximum time (in seconds) to allow for the function call.
+    :param args: The arguments to pass to the SDK function.
+    :return: The result of the SDK function call if successful, or None if it fails or times out.
+    :raises MIRcatError: If the function call fails or times out.
+    """
+
+    def call_sdk():
+        ret = sdk_function(*args)
+        return check_return_value(ret)
+
+    # Create a thread to run the SDK function
+    sdk_thread = threading.Thread(target=call_sdk)
+
+    # Start the thread
+    sdk_thread.start()
+
+    # Wait for the thread to complete or timeout
+    sdk_thread.join(timeout)
+
+    if sdk_thread.is_alive():
+        # If still alive, we assume the call timed out
+        raise MIRcatError(code="-2", message="SDK call timed out.")
+
+
+def print_dict(data_dict):
+    def color_value(value):
+        if isinstance(value, bool):
+            colored_value = (
+                f"{Fore.GREEN}True{Style.RESET_ALL}"
+                if value
+                else f"{Fore.RED}False{Style.RESET_ALL}"
+            )
+        else:
+            colored_value = str(value)
+        if "?" in colored_value:
+            return f"{Fore.LIGHTBLACK_EX}{colored_value}{Style.RESET_ALL}"
+        return colored_value
+
+    for key, value in data_dict.items():
+        print(f"{key:<30} {color_value(value)}")
 
 
 def wait_till(function, target=True, delay=0.5, timeout=10):
@@ -126,8 +169,9 @@ class MIRcat:
         major = c_uint16()
         minor = c_uint16()
         patch = c_uint16()
-        call_wrapper(
+        call_with_timeout(
             self.SDK.MIRcatSDK_GetAPIVersion,
+            5,
             byref(major),
             byref(minor),
             byref(patch),
@@ -135,17 +179,17 @@ class MIRcat:
         self.APIversion = f"{major.value}.{minor.value}.{patch.value}"
 
     def connect(self):
-        call_wrapper(self.SDK.MIRcatSDK_Initialize)
+        call_with_timeout(self.SDK.MIRcatSDK_Initialize, 5)
         return wait_till(self.is_connected)
 
     def is_connected(self):
         isConnected = c_bool(False)
-        call_wrapper(self.SDK.MIRcatSDK_IsConnectedToLaser, byref(isConnected))
+        call_with_timeout(self.SDK.MIRcatSDK_IsConnectedToLaser, 5, byref(isConnected))
         return isConnected.value
 
     @requires_connection
     def disconnect(self):
-        call_wrapper(self.SDK.MIRcatSDK_DeInitialize)
+        call_with_timeout(self.SDK.MIRcatSDK_DeInitialize, 5)
         return wait_till(self.is_connected, False)
 
     @property
@@ -171,46 +215,50 @@ class MIRcat:
     @requires_connection
     def get_num_qcls(self):
         numQCLs = c_uint8(0)
-        call_wrapper(self.SDK.MIRcatSDK_GetNumInstalledQcls, byref(numQCLs))
+        call_with_timeout(self.SDK.MIRcatSDK_GetNumInstalledQcls, 5, byref(numQCLs))
         self.numQCLs = numQCLs.value
         return self.numQCLs
 
     @requires_connection
     def get_interlock_status(self):
         isInterlockSet = c_bool(False)
-        call_wrapper(self.SDK.MIRcatSDK_IsInterlockedStatusSet, byref(isInterlockSet))
+        call_with_timeout(
+            self.SDK.MIRcatSDK_IsInterlockedStatusSet, 5, byref(isInterlockSet)
+        )
         self.isInterlockSet = isInterlockSet.value
         return self.isInterlockSet
 
     @requires_connection
     def get_key_switch_status(self):
         isKeySwitchSet = c_bool(False)
-        call_wrapper(self.SDK.MIRcatSDK_IsKeySwitchStatusSet, byref(isKeySwitchSet))
+        call_with_timeout(
+            self.SDK.MIRcatSDK_IsKeySwitchStatusSet, 5, byref(isKeySwitchSet)
+        )
         self.isKeySwitchSet = isKeySwitchSet.value
         return self.isKeySwitchSet
 
     @requires_connection
     def arm_laser(self):
-        call_wrapper(self.SDK.MIRcatSDK_ArmLaser)
+        call_with_timeout(self.SDK.MIRcatSDK_ArmLaser, 5)
         return wait_till(self.get_laser_armed_status)
 
     @requires_connection
     def disarm_laser(self):
-        call_wrapper(self.SDK.MIRcatSDK_DisArmLaser)
+        call_with_timeout(self.SDK.MIRcatSDK_DisArmLaser, 5)
         return wait_till(self.get_laser_armed_status, False)
 
     @requires_connection
     def tune(self, mode, target):
         modes = {"wl": MIRcatSDK_UNITS_MICRONS, "wn": MIRcatSDK_UNITS_CM1}
-        call_wrapper(
-            self.SDK.MIRcatSDK_TuneToWW, c_float(target), modes.get(mode), c_uint8(1)
+        call_with_timeout(
+            self.SDK.MIRcatSDK_TuneToWW, 5, c_float(target), modes.get(mode), c_uint8(1)
         )
         wait_till(self.is_tuned, True, 0.5, 30)
 
     @requires_connection
     def is_tuned(self):
         isTuned = c_bool(False)
-        call_wrapper(self.SDK.MIRcatSDK_IsTuned, byref(isTuned))
+        call_with_timeout(self.SDK.MIRcatSDK_IsTuned, 5, byref(isTuned))
         self._status["isTuned"] = isTuned.value
         return self._status["isTuned"]
 
@@ -220,8 +268,9 @@ class MIRcat:
         lightValid = c_bool()
         units = c_uint8()
 
-        call_wrapper(
+        call_with_timeout(
             self.SDK.MIRcatSDK_GetActualWW,
+            5,
             byref(actualWW),
             byref(units),
             byref(lightValid),
@@ -241,25 +290,25 @@ class MIRcat:
 
     @requires_connection
     def enable_emission(self):
-        call_wrapper(self.SDK.MIRcatSDK_TurnEmissionOn)
+        call_with_timeout(self.SDK.MIRcatSDK_TurnEmissionOn, 5)
         return wait_till(self.check_laser_emission)
 
     @requires_connection
     def disable_emission(self):
-        call_wrapper(self.SDK.MIRcatSDK_TurnEmissionOff)
+        call_with_timeout(self.SDK.MIRcatSDK_TurnEmissionOff, 5)
         return wait_till(self.check_laser_emission, False)
 
     @requires_connection
     def check_laser_emission(self):
         isEmitting = c_bool(False)
-        call_wrapper(self.SDK.MIRcatSDK_IsEmissionOn, byref(isEmitting))
+        call_with_timeout(self.SDK.MIRcatSDK_IsEmissionOn, 5, byref(isEmitting))
         self._status["isEmitting"] = isEmitting.value
         return self._status["isEmitting"]
 
     @requires_connection
     def get_laser_armed_status(self):
         isArmed = c_bool(True)
-        call_wrapper(self.SDK.MIRcatSDK_IsLaserArmed, byref(isArmed))
+        call_with_timeout(self.SDK.MIRcatSDK_IsLaserArmed, 5, byref(isArmed))
         self._status["isArmed"] = isArmed.value
         return self._status["isArmed"]
 
@@ -274,21 +323,25 @@ class MIRcat:
     def get_QCL_PulseRate(self, QCLnum):
         QCLnum = c_uint8(QCLnum)
         puls_rate = c_float()
-        call_wrapper(self.SDK.MIRcatSDK_GetQCLPulseRate, QCLnum, byref(puls_rate))
+        call_with_timeout(
+            self.SDK.MIRcatSDK_GetQCLPulseRate, 5, QCLnum, byref(puls_rate)
+        )
         return puls_rate.value
 
     @requires_connection
     def get_QCL_PulseWidth(self, QCLnum):
         QCLnum = c_uint8(QCLnum)
         puls_width = c_float()
-        call_wrapper(self.SDK.MIRcatSDK_GetQCLPulseWidth, QCLnum, byref(puls_width))
+        call_with_timeout(
+            self.SDK.MIRcatSDK_GetQCLPulseWidth, 5, QCLnum, byref(puls_width)
+        )
         return puls_width.value
 
     @requires_connection
     def get_QCL_Current(self, QCLnum):
         QCLnum = c_uint8(QCLnum)
         current = c_float()
-        call_wrapper(self.SDK.MIRcatSDK_GetQCLCurrent, QCLnum, byref(current))
+        call_with_timeout(self.SDK.MIRcatSDK_GetQCLCurrent, 5, QCLnum, byref(current))
         return current.value
 
     @requires_connection
@@ -323,8 +376,9 @@ class MIRcat:
                 -1, f"Current limit: 0 <= current <= {cur_limits[QCLnum]}"
             )
 
-        call_wrapper(
+        call_with_timeout(
             self.SDK.MIRcatSDK_SetQCLParams,
+            5,
             c_uint8(QCLnum),
             c_float(puls_rate),
             c_float(puls_width),
@@ -336,8 +390,9 @@ class MIRcat:
         self, mode, start, end, speed, repetitions=1, bidirectional=False
     ):
         modes = {"wl": MIRcatSDK_UNITS_MICRONS, "wn": MIRcatSDK_UNITS_CM1}
-        call_wrapper(
+        call_with_timeout(
             self.SDK.MIRcatSDK_StartSweepScan,
+            5,
             c_float(start),
             c_float(end),
             c_float(speed),
@@ -348,15 +403,15 @@ class MIRcat:
 
     @requires_connection
     def stopScan(self):
-        call_wrapper(self.SDK.MIRcatSDK_StopScanInProgress)
+        call_with_timeout(self.SDK.MIRcatSDK_StopScanInProgress, 5)
 
     @requires_connection
     def pauseScan(self):
-        call_wrapper(self.SDK.MIRcatSDK_PauseScanInProgress)
+        call_with_timeout(self.SDK.MIRcatSDK_PauseScanInProgress, 5)
 
     @requires_connection
     def resumeScan(self):
-        call_wrapper(self.SDK.MIRcatSDK_ResumeScanInProgress)
+        call_with_timeout(self.SDK.MIRcatSDK_ResumeScanInProgress, 5)
 
     @property
     @requires_connection
@@ -371,8 +426,9 @@ class MIRcat:
         isTECInProgress = c_bool()
         isMotionInProgress = c_bool()
 
-        call_wrapper(
+        call_with_timeout(
             self.SDK.MIRcatSDK_GetScanStatus,
+            5,
             byref(isScanInProgress),
             byref(isScanActive),
             byref(isScanPaused),
