@@ -386,6 +386,45 @@ class MIRcat:
         )
 
     @requires_connection
+    def set_QCL_PulseRate(self, QCLnum, puls_rate):
+        # Retrieve the current parameters
+        current_params = self.get_QCL_params(QCLnum)
+
+        # Set the pulse rate while keeping the other parameters unchanged
+        self.set_QCL_params(
+            QCLnum,
+            puls_rate=puls_rate,
+            puls_width=current_params["puls_width"],
+            current=current_params["current"],
+        )
+
+    @requires_connection
+    def set_QCL_PulseWidth(self, QCLnum, puls_width):
+        # Retrieve the current parameters
+        current_params = self.get_QCL_params(QCLnum)
+
+        # Set the pulse width while keeping the other parameters unchanged
+        self.set_QCL_params(
+            QCLnum,
+            puls_rate=current_params["puls_rate"],
+            puls_width=puls_width,
+            current=current_params["current"],
+        )
+
+    @requires_connection
+    def set_QCL_Current(self, QCLnum, current):
+        # Retrieve the current parameters
+        current_params = self.get_QCL_params(QCLnum)
+
+        # Set the current while keeping the other parameters unchanged
+        self.set_QCL_params(
+            QCLnum,
+            puls_rate=current_params["puls_rate"],
+            puls_width=current_params["puls_width"],
+            current=current,
+        )
+
+    @requires_connection
     def startSweepScan(
         self, mode, start, end, speed, repetitions=1, bidirectional=False
     ):
