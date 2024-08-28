@@ -95,8 +95,6 @@ def wait_till(function, target=True, delay=0.5, timeout=10):
     progress_bar_length = 30  # Length of the progress bar
     func_name = function.__name__
 
-    print(f"Waiting for target value {target}...")
-
     while True:
         current_value = function()
         if current_value == target:
@@ -179,7 +177,7 @@ class MIRcat:
         self.APIversion = f"{major.value}.{minor.value}.{patch.value}"
 
     def connect(self):
-        call_with_timeout(self.SDK.MIRcatSDK_Initialize, 5)
+        call_with_timeout(self.SDK.MIRcatSDK_Initialize, 15)
         return wait_till(self.is_connected)
 
     def is_connected(self):
@@ -189,12 +187,13 @@ class MIRcat:
 
     @requires_connection
     def disconnect(self):
-        call_with_timeout(self.SDK.MIRcatSDK_DeInitialize, 5)
+        call_with_timeout(self.SDK.MIRcatSDK_DeInitialize, 15)
         return wait_till(self.is_connected, False)
 
     @property
     def status(self):
         if self.is_connected():
+            self._status["connected"] = True
             self._status["numQCLs"] = self.get_num_qcls()
             self._status["isInterlockSet"] = self.get_interlock_status()
             self._status["isKeySwitchSet"] = self.get_key_switch_status()
@@ -244,7 +243,7 @@ class MIRcat:
 
     @requires_connection
     def disarm_laser(self):
-        call_with_timeout(self.SDK.MIRcatSDK_DisArmLaser, 5)
+        call_with_timeout(self.SDK.MIRcatSDK_DisarmLaser, 5)
         return wait_till(self.get_laser_armed_status, False)
 
     @requires_connection
@@ -355,7 +354,7 @@ class MIRcat:
 
     @requires_connection
     def set_QCL_params(self, QCLnum, puls_rate, puls_width, current):
-        duty_cycle = 1e-6 * puls_rate * puls_width
+        duty_cycle = 1e-7 * puls_rate * puls_width
 
         if QCLnum not in [1, 2, 3, 4]:
             raise MIRcatError(-1, "Wrong QCLnum: must be one of 1,2,3,4")
@@ -366,14 +365,14 @@ class MIRcat:
         if duty_cycle < 0 or duty_cycle > 5:
             raise MIRcatError(-1, "Duty cycle limit: 0% <= duty cycle <= 5%")
 
-        if puls_width < 0 or puls_width > 100:
-            raise MIRcatError(-1, "Duty cycle limit: 0 <= puls width <= 100")
+        if puls_width < 0 or puls_width > 500:
+            raise MIRcatError(-1, "Puls width limit: 0 <= puls width <= 100")
 
         # Estimated from default values + 10%
         cur_limits = [800, 820, 630, 950]
-        if current < 0 or current > cur_limits[QCLnum]:
+        if current < 0 or current > cur_limits[QCLnum-1]:
             raise MIRcatError(
-                -1, f"Current limit: 0 <= current <= {cur_limits[QCLnum]}"
+                -1, f"Current limit: 0 <= current <= {cur_limits[QCLnum-1]}"
             )
 
         call_with_timeout(
